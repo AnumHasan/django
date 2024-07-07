@@ -2541,38 +2541,51 @@ class InlineModelAdmin(BaseModelAdmin):
             for perm in perms
         )
 
-    def has_add_permission(self, request, obj):
-        if self.opts.auto_created:
-            # Auto-created intermediate models don't have their own
-            # permissions. The user needs to have the change permission for the
-            # related model in order to be able to do anything with the
-            # intermediate model.
-            return self._has_any_perms_for_target_model(request, ["change"])
-        return super().has_add_permission(request)
+//redesigncode
+def has_permission(request, obj, permissions):
+    if obj._meta.auto_created:
+        return any(request.user.has_perm(perm) for perm in permissions)
+    return True
+
+def get_max_num_comments(obj):
+    return obj.max_comments if obj else 1
+
+# Inline admin for Comments without using inheritance
+class CommentInline:
+    model = Comment
+    extra = 1
+
+    def get_max_num(self, request, obj=None):
+        return get_max_num_comments(obj)
+
+# Register Blog with custom inline admin functionality
+class BlogAdmin:
+    inlines = [CommentInline]
+
+    def __init__(self, model, admin_site):
+        self.model = model
+        self.admin_site = admin_site
+
+    def has_add_permission(self, request, obj=None):
+        return has_permission(request, obj, ["change"])
 
     def has_change_permission(self, request, obj=None):
-        if self.opts.auto_created:
-            # Same comment as has_add_permission().
-            return self._has_any_perms_for_target_model(request, ["change"])
-        return super().has_change_permission(request)
+        return has_permission(request, obj, ["change"])
 
     def has_delete_permission(self, request, obj=None):
-        if self.opts.auto_created:
-            # Same comment as has_add_permission().
-            return self._has_any_perms_for_target_model(request, ["change"])
-        return super().has_delete_permission(request, obj)
+        return has_permission(request, obj, ["change"])
 
     def has_view_permission(self, request, obj=None):
-        if self.opts.auto_created:
-            # Same comment as has_add_permission(). The 'change' permission
-            # also implies the 'view' permission.
-            return self._has_any_perms_for_target_model(request, ["view", "change"])
-        return super().has_view_permission(request)
+        return has_permission(request, obj, ["view", "change"])
 
+admin.site.register(Blog, BlogAdmin)
 
-class StackedInline(InlineModelAdmin):
-    template = "admin/edit_inline/stacked.html"
+# Simple function-based inline admin rendering
+def render_inline_admin(template, model, admin_site):
+    def get_template(request, obj=None):
+        return template
 
+    return get_template
 
-class TabularInline(InlineModelAdmin):
-    template = "admin/edit_inline/tabular.html"
+StackedInline = render_inline_admin("admin/edit_inline/stacked.html", Comment, admin.site)
+TabularInline = render_inline_admin("admin/edit_inline/tabular.html", Comment, admin.site)
